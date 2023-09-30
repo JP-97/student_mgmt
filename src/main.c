@@ -23,7 +23,11 @@ int main(int argc, char *argv[])
 
         switch (user_input) {
 
-            case 'A':
+            // TODO: Need to add an option for "Create database"
+            // This will create the empty database with the basic JSON structure needed for
+            // future add operations. Otherwise, we need to add the checks into add, read, etc. to make sure keys are there.
+
+            case 'A': 
                 ret = add_student();
                 break;
 
@@ -59,7 +63,7 @@ int main(int argc, char *argv[])
         }
 
     
-    printf("\n\n\n");
+    printf("\n\n");
     clear_input_buffer();
 
     }

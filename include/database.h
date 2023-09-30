@@ -13,14 +13,12 @@
 */
 int add_student();
 
-
-int print_db_contents();
-
 /**
-* Get the contents of the student database
+* Print the student database contents
 *
-* @return A string containing the DB contents, otherwise NULL.
+* @return RC_SUCCESS if database was parsed and all student info was printed, 
+          otherwise return RC_FAILED.
 */
-char *get_db_contents();
+int print_db_contents();
 
 #endif
