@@ -2,15 +2,10 @@
 #include <string.h>
 #include <unistd.h>
 #include <json-c/json.h>
-
-#include "database.h"
 #include "student.h"
 #include "constants.h"
 
-
 #define MAX_NAME_SIZE 20
-const char *STUDENT_FORMAT_OUT = "{\"ID\":%d, \"first_name\":\"%s\", \"last_name\":\"%s\"}\n";
-const char *STUDENT_FORMAT_IN = "{\"ID\":%d, \"first_name\":[^\"], \"last_name\":[^\"]}\n";
 
 
 // Helper function definitions
@@ -19,6 +14,8 @@ static void clear_input_buffer(void);
 static void get_user_input(const char *prompt, char *result, int max_result_size);
 static int add_student_to_db(Student student);
 static FILE *get_db_file_handler();
+static struct json_object *get_db_contents();
+static void overwrite_database_contents(const char *db_contents);
 
 
 int add_student(){
@@ -32,7 +29,8 @@ int add_student(){
         printf("Failed in adding provided student to the database\n");
         return RC_FAILED;
     }
-    
+
+
     s.student_id = student_id;
     s.first_name = first_name;
     s.last_name = last_name;
@@ -52,43 +50,35 @@ int add_student(){
 
 
 int print_db_contents(){
-    char *t = NULL; 
-    t = get_db_contents();
-    return RC_SUCCESS;
-}
+    json_object *db_contents, *ID, *first_name, *last_name, *student, *students;
+    int num_students;
 
+    db_contents = get_db_contents();
 
-char *get_db_contents(){
-    FILE *db_ptr = NULL;
-    char buffer[MAX_DB_SIZE];
-    json_object *db_contents;
-    json_object *ID;
-    json_object *first_name;
-    json_object *last_name;
-
-    db_ptr = get_db_file_handler();
-
-    if(db_ptr == NULL){
-        return NULL;
+    if(db_contents == NULL){
+        printf("Failed to get the datbase contents!\n");
+        return RC_FAILED;
     }
 
-    fread(buffer, MAX_DB_SIZE, 1, db_ptr);
-    fclose(db_ptr);
+    json_object_object_get_ex(db_contents, "students", &students);
+    num_students = json_object_array_length(students);
+    printf("\nThe following students were found in the database:\n");
 
-    // TODO need to restructure db.json so it's a flat json file with a single array
-    // Each array element will represent a student
-    // Then, we iterate over the students, 1-by-1, printing them with logic below
+    for(int i=0; i<num_students; i++){
+        student = json_object_array_get_idx(students, i);
 
+        json_object_object_get_ex(student, "ID", &ID);
+        json_object_object_get_ex(student, "first_name", &first_name);
+        json_object_object_get_ex(student, "last_name", &last_name);
 
-    db_contents = json_tokener_parse(buffer);
-    json_object_object_get_ex(db_contents, "ID", &ID);  // Each key will return a json object
-    json_object_object_get_ex(db_contents, "first_name", &first_name);
-    json_object_object_get_ex(db_contents, "last_name", &last_name);
+        printf("=========================\n");
+        printf("ID: %s\n", json_object_get_string(ID));
+        printf("first_name: %s\n", json_object_get_string(first_name));
+        printf("last_name: %s\n", json_object_get_string(last_name));
+        printf("=========================\n");
+    }
 
-    printf("ID: %s\n", json_object_get_string(ID));
-    printf("first_name: %s\n", json_object_get_string(first_name));
-    printf("last_name: %s\n", json_object_get_string(last_name));
-
+    return RC_SUCCESS;
 }
 
 
@@ -165,24 +155,38 @@ static void get_user_input(const char *prompt, char *result, int max_result_size
 */
 static int add_student_to_db(Student s){
     FILE *db_ptr = NULL;
-    char c;
-    int i = 0;
+    int i = 0, c;
+    struct json_object *db_contents, *students, *new_student;
     
-    db_ptr = get_db_file_handler();
+    // Convert student to JSON
+    new_student = json_object_new_object();
+    json_object_object_add(new_student, "ID", json_object_new_int(s.student_id));
+    json_object_object_add(new_student, "first_name", json_object_new_string(s.first_name));
+    json_object_object_add(new_student, "last_name", json_object_new_string(s.last_name));
 
-    if(db_ptr == NULL){
-        printf("Something went wrong trying to access the database\n");
+    // Append student to the student database
+    db_contents = get_db_contents();
+    json_object_object_get_ex(db_contents, "students", &students);
+
+    if(db_contents == NULL || !students){
+        printf("Failed to get the database contents!\n");
         return RC_FAILED;
     }
-    // TODO Add validation logic
 
-    // Student first name and last name have MAX_NAME_SIZE. ID has max int size (4B)
+    // TODO Add some validation logic here to make sure we're not at the max DB size
+    json_object_array_add(students, new_student);
 
-    //Each student takes 3 "lines" in the DB
 
-    fprintf(db_ptr, STUDENT_FORMAT_OUT, s.student_id, s.first_name, s.last_name);
+    // Write the updated JSON back to the database 
+    db_ptr = db_ptr = fopen(DB_PATH, "w+"); // TODO abstract this to helper function
+    if(db_ptr == NULL){
+        printf("Failed to open the database to add the student!\n");
+        return RC_FAILED;
+    }
 
+    fprintf(db_ptr, "%s", json_object_get_string(db_contents));
     fclose(db_ptr);
+
     return RC_SUCCESS;
 
 }
@@ -202,4 +206,37 @@ static FILE *get_db_file_handler(){
         db_ptr = fopen(DB_PATH, "a+");
 
     return db_ptr;
+}
+
+
+/**
+ * Overwrite the contents of the database with the provided contents.
+ * 
+ * @param db_contents pointer to string of characters to write to db.
+*/
+static void overwrite_database_contents(const char *db_contents){
+    ;
+}
+
+
+
+/**
+ * @return a pointer to json_object containing db contents.
+*/
+static struct json_object *get_db_contents(){
+    FILE *db_ptr;
+    char buffer[MAX_DB_SIZE];
+
+    // Read raw DB contents into buffer
+    db_ptr = get_db_file_handler();
+
+    if(db_ptr == NULL){
+        printf("Something went wrong trying to read the database!\n");
+        return NULL;
+    }
+
+    fread(buffer, MAX_DB_SIZE, 1, db_ptr);
+    fclose(db_ptr);
+
+    return json_tokener_parse(buffer);
 }
