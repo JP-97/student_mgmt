@@ -1,27 +1,59 @@
 #include <stdio.h>
 #include <string.h>
+#include <stdbool.h>
 #include <unistd.h>
 #include <json-c/json.h>
 #include "student.h"
 #include "constants.h"
+#include "helpers.h"
 
 #define MAX_NAME_SIZE 20
 
 
 // Helper function definitions
 static int get_student_information(uint_32 *student_id, char *first_name, char *last_name);
-static void clear_input_buffer(void);
 static void get_user_input(const char *prompt, char *result, int max_result_size);
 static int add_student_to_db(Student student);
 static FILE *get_db_file_handler();
+static bool does_db_exist();
 static struct json_object *get_db_contents();
 static void overwrite_database_contents(const char *db_contents);
+
+
+int init_student_database(){
+    FILE *db_ptr = NULL;
+    struct json_object *db_template;
+
+    if(does_db_exist()){
+        printf("Student database already exists!\n");
+        return RC_SUCCESS;
+    }
+
+    printf("Student database does not yet exist... Creating DB...\n");
+    db_template = json_object_new_object();
+    json_object_object_add(db_template, "students", json_object_new_array());
+    
+    db_ptr = fopen(DB_PATH, "w");
+    if(db_ptr == NULL){
+        printf("Something went wrong creating the database file!\n");
+        return RC_FAILED;
+    }
+    
+    fprintf(db_ptr, "%s", json_object_get_string(db_template));
+    fclose(db_ptr);
+    return RC_SUCCESS;
+}
 
 
 int add_student(){
     Student s;
     uint_32 student_id=0;
     char first_name[MAX_NAME_SIZE], last_name[MAX_NAME_SIZE];
+
+    if (!does_db_exist()){
+        printf("Student database is not yet initialized!\n");
+        return RC_FAILED;
+    }
     
     int got_info = get_student_information(&student_id, first_name, last_name);
 
@@ -29,7 +61,6 @@ int add_student(){
         printf("Failed in adding provided student to the database\n");
         return RC_FAILED;
     }
-
 
     s.student_id = student_id;
     s.first_name = first_name;
@@ -51,7 +82,13 @@ int add_student(){
 
 int print_db_contents(){
     json_object *db_contents, *ID, *first_name, *last_name, *student, *students;
-    int num_students;
+    int num_students; 
+    const char *seperator = "=========================\n";
+
+    if (!does_db_exist()){
+        printf("Student database is not yet initialized!\n");
+        return RC_FAILED;
+    }
 
     db_contents = get_db_contents();
 
@@ -62,6 +99,12 @@ int print_db_contents(){
 
     json_object_object_get_ex(db_contents, "students", &students);
     num_students = json_object_array_length(students);
+
+    if(!num_students){
+        printf("The student database is currently empty\n");
+        return RC_SUCCESS;
+    }
+
     printf("\nThe following students were found in the database:\n");
 
     for(int i=0; i<num_students; i++){
@@ -71,27 +114,25 @@ int print_db_contents(){
         json_object_object_get_ex(student, "first_name", &first_name);
         json_object_object_get_ex(student, "last_name", &last_name);
 
-        printf("=========================\n");
+        printf("%s", seperator);
         printf("ID: %s\n", json_object_get_string(ID));
         printf("first_name: %s\n", json_object_get_string(first_name));
         printf("last_name: %s\n", json_object_get_string(last_name));
-        printf("=========================\n");
+        printf("%s", seperator);
     }
 
     return RC_SUCCESS;
 }
 
 
-// Helpers Below //
+// Database Helpers Below //
 
 static int get_student_information(uint_32 *student_id, char *first_name, char *last_name){
 
-    char *empty_space;
-
     printf("Please enter your student ID: ");
     scanf("%u", student_id);
-
     clear_input_buffer();
+
     get_user_input("Please enter your first name: ", first_name, MAX_NAME_SIZE);
     get_user_input("Please enter your last name: ", last_name, MAX_NAME_SIZE);
     
@@ -99,7 +140,7 @@ static int get_student_information(uint_32 *student_id, char *first_name, char *
     /*
     * Validate user input was valid
     */
-    if (student_id < 0){ // TODO FIX THIS CHECK
+    if (*student_id < 0){ // TODO FIX THIS CHECK
         printf("Student ID must be non-zero number\n");
         return RC_FAILED;
     }
@@ -116,15 +157,6 @@ static int get_student_information(uint_32 *student_id, char *first_name, char *
 
     return RC_SUCCESS;
 }
-
-
-static void clear_input_buffer() {
-    int c;
-    while ((c = getchar()) != '\n' && c != EOF) {
-        // Discard character by doing nothing
-    }
-}
-
 
 /**
  * Prompt the user of the program for their input and update in provided result.
@@ -147,8 +179,7 @@ static void get_user_input(const char *prompt, char *result, int max_result_size
 
 
 /**
-* Create the student database if it doesn't already exist 
-* and add the provided student.
+* Add the provided Student to the student database. 
 *
 * @param student Structure containing student info to be added to db
 * @return RC_SUCCESS if the write succeeds, otherwise RC_FAILED
@@ -157,7 +188,7 @@ static int add_student_to_db(Student s){
     FILE *db_ptr = NULL;
     int i = 0, c;
     struct json_object *db_contents, *students, *new_student;
-    
+
     // Convert student to JSON
     new_student = json_object_new_object();
     json_object_object_add(new_student, "ID", json_object_new_int(s.student_id));
@@ -168,7 +199,7 @@ static int add_student_to_db(Student s){
     db_contents = get_db_contents();
     json_object_object_get_ex(db_contents, "students", &students);
 
-    if(db_contents == NULL || !students){
+    if(db_contents == NULL || students == NULL){
         printf("Failed to get the database contents!\n");
         return RC_FAILED;
     }
@@ -198,13 +229,12 @@ static int add_student_to_db(Student s){
 static FILE *get_db_file_handler(){
     FILE *db_ptr = NULL;
 
-    if(access(DB_PATH, F_OK) != 0){
-        printf("Student database does not yet exist... Creating DB...\n");
-        db_ptr = fopen(DB_PATH, "w+");
+    if(!does_db_exist()){
+        printf("The student database is not yet initialized!");
+        return db_ptr;
     }
-    else
-        db_ptr = fopen(DB_PATH, "a+");
-
+    
+    db_ptr = fopen(DB_PATH, "a+");
     return db_ptr;
 }
 
@@ -217,7 +247,6 @@ static FILE *get_db_file_handler(){
 static void overwrite_database_contents(const char *db_contents){
     ;
 }
-
 
 
 /**
@@ -239,4 +268,9 @@ static struct json_object *get_db_contents(){
     fclose(db_ptr);
 
     return json_tokener_parse(buffer);
+}
+
+
+bool does_db_exist(){
+    return access(DB_PATH, F_OK) == 0 ? true : false; 
 }

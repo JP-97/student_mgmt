@@ -21,4 +21,14 @@ int add_student();
 */
 int print_db_contents();
 
+/**
+ * Initialize the student database
+ * 
+ * @return RC_SUCCESS if the student database was successfully initialized,
+ *         otherwise RC_FAILED. Successfully initialized means that either the
+ *         database already exists / is not empty, otherwise a database is generated
+ *         with an empty "students" array.
+*/
+int init_student_database();
+
 #endif
