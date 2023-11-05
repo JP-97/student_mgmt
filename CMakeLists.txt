@@ -5,6 +5,7 @@ project(smp)
 set(SOURCES
     src/database.c
     src/main.c
+    src/helpers.c
 )
 
 add_executable(${PROJECT_NAME} ${SOURCES})
