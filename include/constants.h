@@ -11,7 +11,9 @@ typedef unsigned int uint_32;
 #define MAX_DB_SIZE 1024
 #define DB_PATH "/home/jpoirier/Documents/student_mgmt/db.json"
 
-#define RC_SUCCESS 1
-#define RC_FAILED -1
+enum return_codes {
+    RC_FAILED,
+    RC_SUCCESS
+};
 
 #endif

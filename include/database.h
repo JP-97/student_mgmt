@@ -31,4 +31,13 @@ int print_db_contents();
 */
 int init_student_database();
 
+/**
+ * Get information for a particular student based on the student ID.
+ * 
+ * @return RC_SUCCESS if the student exists in the database and their
+ *         contents were successfully outputted to user, otherwise
+ *         RC_FAILED.
+*/
+int get_student_info();
+
 #endif

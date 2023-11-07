@@ -12,12 +12,15 @@
 
 // Helper function definitions
 static int get_student_information(uint_32 *student_id, char *first_name, char *last_name);
+static int get_student_id(uint_32 *student_id);
 static void get_user_input(const char *prompt, char *result, int max_result_size);
 static int add_student_to_db(Student student);
 static FILE *get_db_file_handler();
 static bool does_db_exist();
 static struct json_object *get_db_contents();
+static size_t get_db_size(const struct json_object *db_contents);
 static void overwrite_database_contents(const char *db_contents);
+static void print_student_info(const char *student_id, const char *first_name, const char *last_name);
 
 
 int init_student_database(){
@@ -83,7 +86,6 @@ int add_student(){
 int print_db_contents(){
     json_object *db_contents, *ID, *first_name, *last_name, *student, *students;
     int num_students; 
-    const char *seperator = "=========================\n";
 
     if (!does_db_exist()){
         printf("Student database is not yet initialized!\n");
@@ -97,14 +99,15 @@ int print_db_contents(){
         return RC_FAILED;
     }
 
-    json_object_object_get_ex(db_contents, "students", &students);
-    num_students = json_object_array_length(students);
+    num_students = get_db_size(db_contents);
 
     if(!num_students){
         printf("The student database is currently empty\n");
         return RC_SUCCESS;
     }
 
+    // Iterate through and print student info to stdout
+    json_object_object_get_ex(db_contents, "students", &students);
     printf("\nThe following students were found in the database:\n");
 
     for(int i=0; i<num_students; i++){
@@ -114,12 +117,60 @@ int print_db_contents(){
         json_object_object_get_ex(student, "first_name", &first_name);
         json_object_object_get_ex(student, "last_name", &last_name);
 
-        printf("%s", seperator);
-        printf("ID: %s\n", json_object_get_string(ID));
-        printf("first_name: %s\n", json_object_get_string(first_name));
-        printf("last_name: %s\n", json_object_get_string(last_name));
-        printf("%s", seperator);
+        print_student_info(json_object_get_string(ID),
+                           json_object_get_string(first_name), 
+                           json_object_get_string(last_name));
     }
+
+    return RC_SUCCESS;
+}
+
+int get_student_info(){
+    uint_32 student_id = 0, i;
+    struct json_object *db_contents, *student, *students, *ID, *first_name, *last_name;
+
+    if(get_student_id(&student_id) != RC_SUCCESS)
+        return RC_FAILED;
+
+    db_contents = get_db_contents();
+
+    if(db_contents == NULL){
+        printf("Failed to get the datbase contents!\n");
+        return RC_FAILED;
+    }
+
+    // Iterate through database contents until correct
+    // student_id is found
+    size_t num_students = get_db_size(db_contents);
+
+    if(!num_students){
+        printf("The student database is currently empty\n");
+        return RC_SUCCESS;
+    }
+
+    json_object_object_get_ex(db_contents, "students", &students);
+
+    for(i = 0; i < num_students; i++){
+        student = json_object_array_get_idx(students, i);
+        json_object_object_get_ex(student, "ID", &ID);
+        if(json_object_get_int(ID) == student_id)
+            break;
+    }
+
+    if(i == num_students){
+        printf("Failed to find student id (%d) in the student database", student_id);
+        return RC_SUCCESS;
+    }
+
+    printf("\nThe following student was found with ID: %d\n", student_id);
+
+    json_object_object_get_ex(student, "ID", &ID);
+    json_object_object_get_ex(student, "first_name", &first_name);
+    json_object_object_get_ex(student, "last_name", &last_name);
+
+    print_student_info(json_object_get_string(ID),
+                       json_object_get_string(first_name), 
+                       json_object_get_string(last_name));
 
     return RC_SUCCESS;
 }
@@ -129,9 +180,9 @@ int print_db_contents(){
 
 static int get_student_information(uint_32 *student_id, char *first_name, char *last_name){
 
-    printf("Please enter your student ID: ");
-    scanf("%u", student_id);
-    clear_input_buffer();
+    
+    if(get_student_id(student_id) != RC_SUCCESS)
+        return RC_FAILED;
 
     get_user_input("Please enter your first name: ", first_name, MAX_NAME_SIZE);
     get_user_input("Please enter your last name: ", last_name, MAX_NAME_SIZE);
@@ -140,11 +191,6 @@ static int get_student_information(uint_32 *student_id, char *first_name, char *
     /*
     * Validate user input was valid
     */
-    if (*student_id < 0){ // TODO FIX THIS CHECK
-        printf("Student ID must be non-zero number\n");
-        return RC_FAILED;
-    }
-
     if (!strcmp(first_name,"") || !strcmp(last_name,"")){
         printf("\nYou must provide a non-empty first and last name\n");
         return RC_FAILED;
@@ -155,6 +201,30 @@ static int get_student_information(uint_32 *student_id, char *first_name, char *
         return RC_FAILED;
     }
 
+    return RC_SUCCESS;
+}
+
+/**
+ * Get the student id from the user.
+ * 
+ * @param student_id pointer to an int where the student number will be stored.
+ * @return RC_SUCCESS if a valid (non-zero, non-negative) student ID 
+ *         was received, otherwise RC_FAILED.
+ * 
+*/
+static int get_student_id(uint_32 *student_id){
+
+    int tmp = 0;
+    printf("Please enter your student ID: ");
+    scanf("%d", &tmp);
+    clear_input_buffer();
+
+    if(tmp <= 0){
+        printf("Student ID must be greater than 0!\n");
+        return RC_FAILED;
+    }
+
+    *student_id = (uint_32)tmp;
     return RC_SUCCESS;
 }
 
@@ -271,6 +341,40 @@ static struct json_object *get_db_contents(){
 }
 
 
+/*
+*Return true if database exists, otherwise false.
+*/
 bool does_db_exist(){
     return access(DB_PATH, F_OK) == 0 ? true : false; 
+}
+
+
+/**
+ * @param db_contents pointer to json_object struct containing db contents
+ * @return an unsigned int containing the number of students in the database.
+*/
+size_t get_db_size(const struct json_object *db_contents){
+    struct json_object *students;
+
+    json_object_object_get_ex(db_contents, "students", &students);
+    return json_object_array_length(students);
+
+}
+
+
+/**
+ * Print a particular student's information to the back to the user.
+ * 
+ * @param student_id string containing the student's id.
+ * @param first_name string containing the student's first name.
+ * @param last_name string containing the student's last name.
+*/
+static void print_student_info(const char *student_id, const char *first_name, const char *last_name){
+    const char *seperator = "=========================\n";
+
+    printf("%s", seperator);
+    printf("ID: %s\n", student_id);
+    printf("first_name: %s\n", first_name);
+    printf("last_name: %s\n", last_name);
+    printf("%s", seperator);
 }

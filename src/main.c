@@ -40,7 +40,7 @@ int main(int argc, char *argv[])
                 break;
 
             case 'V':
-                printf("Not implemented yet\n");
+                ret = get_student_info();
                 break;
 
             case 'R':
