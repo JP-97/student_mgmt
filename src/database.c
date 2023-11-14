@@ -19,7 +19,7 @@ static FILE *get_db_file_handler();
 static bool does_db_exist();
 static struct json_object *get_db_contents();
 static size_t get_db_size(const struct json_object *db_contents);
-static void overwrite_database_contents(const char *db_contents);
+static bool overwrite_database_contents(struct json_object *db_contents);
 static void print_student_info(const char *student_id, const char *first_name, const char *last_name);
 
 
@@ -48,7 +48,7 @@ int init_student_database(){
 }
 
 
-int add_student(){
+int add_student(){ // TODO Add logic to prevent same student ID from being added twice
     Student s;
     uint_32 student_id=0;
     char first_name[MAX_NAME_SIZE], last_name[MAX_NAME_SIZE];
@@ -176,6 +176,60 @@ int get_student_info(){
 }
 
 
+int remove_student(){
+    uint_32 student_id, num_students, i;
+    struct json_object *db_contents, *students, *student, *ID, *first_name, *last_name;
+
+    if(get_student_id(&student_id) != RC_SUCCESS)
+        return RC_FAILED;
+
+    db_contents = get_db_contents();
+
+    if(db_contents == NULL){
+        return RC_FAILED;
+    }
+
+    num_students = get_db_size(db_contents);
+
+    if(!num_students){
+        printf("The student database is currently empty. Can't remove student %d", student_id);
+        return RC_SUCCESS;
+    }  
+
+    json_object_object_get_ex(db_contents, "students", &students);
+
+    // Iterate through students to find the student specified for removal
+    for(i = 0; i < num_students; i++){
+        student = json_object_array_get_idx(students, i);
+        json_object_object_get_ex(student, "ID", &ID);
+
+        if (json_object_get_int(ID) == student_id){
+            json_object_object_get_ex(student, "first_name", &first_name);
+            json_object_object_get_ex(student, "last_name", &last_name);
+
+            printf("Removing the following student from the database:\n");
+            print_student_info(json_object_get_string(ID),
+                       json_object_get_string(first_name), 
+                       json_object_get_string(last_name));
+            
+            json_object_array_del_idx(students, i, 1);
+            break;
+        }
+    }
+
+    if(i == num_students){
+        printf("Could not find a student in the database with student id %d\n", student_id);
+        return RC_FAILED;
+    }
+
+    if(!overwrite_database_contents(db_contents))
+        return RC_FAILED;
+
+    printf("\nSuccessfully removed student %d from the database\n", student_id);
+
+    return RC_SUCCESS;
+}
+
 // Database Helpers Below //
 
 static int get_student_information(uint_32 *student_id, char *first_name, char *last_name){
@@ -277,17 +331,10 @@ static int add_student_to_db(Student s){
     // TODO Add some validation logic here to make sure we're not at the max DB size
     json_object_array_add(students, new_student);
 
-
-    // Write the updated JSON back to the database 
-    db_ptr = db_ptr = fopen(DB_PATH, "w+"); // TODO abstract this to helper function
-    if(db_ptr == NULL){
-        printf("Failed to open the database to add the student!\n");
+    if(!overwrite_database_contents(db_contents))
         return RC_FAILED;
-    }
 
-    fprintf(db_ptr, "%s", json_object_get_string(db_contents));
-    fclose(db_ptr);
-
+    printf("Successfully added student to the database!\n");
     return RC_SUCCESS;
 
 }
@@ -310,12 +357,23 @@ static FILE *get_db_file_handler(){
 
 
 /**
- * Overwrite the contents of the database with the provided contents.
+ * Overwrite the contents of the database with the provided db_contents.
  * 
  * @param db_contents pointer to string of characters to write to db.
+ * @return true if the contents were successfully updated, otherwise false.
 */
-static void overwrite_database_contents(const char *db_contents){
-    ;
+static bool overwrite_database_contents(struct json_object *db_contents){
+    FILE *db_ptr;
+    db_ptr = fopen(DB_PATH, "w+");
+
+    if(db_ptr == NULL){
+        printf("Failed to open the database\n");
+        return false;
+    }
+
+    fprintf(db_ptr, "%s", json_object_get_string(db_contents));
+    fclose(db_ptr);
+    return true;
 }
 
 
@@ -358,9 +416,7 @@ size_t get_db_size(const struct json_object *db_contents){
 
     json_object_object_get_ex(db_contents, "students", &students);
     return json_object_array_length(students);
-
 }
-
 
 /**
  * Print a particular student's information to the back to the user.
