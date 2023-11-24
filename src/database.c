@@ -48,16 +48,18 @@ int init_student_database(){
 }
 
 
-int add_student(){ // TODO Add logic to prevent same student ID from being added twice
+int add_student(){
     Student s;
     uint_32 student_id=0;
     char first_name[MAX_NAME_SIZE], last_name[MAX_NAME_SIZE];
+    struct json_object *db_contents, *students, *student, *ID;
 
     if (!does_db_exist()){
         printf("Student database is not yet initialized!\n");
         return RC_FAILED;
     }
     
+    // Get information for student being added
     int got_info = get_student_information(&student_id, first_name, last_name);
 
     if(got_info != RC_SUCCESS){
@@ -69,7 +71,27 @@ int add_student(){ // TODO Add logic to prevent same student ID from being added
     s.first_name = first_name;
     s.last_name = last_name;
 
-    if(add_student_to_db(s) != RC_SUCCESS){
+    // Validate that student is not already in the database
+    db_contents = get_db_contents();
+
+    if (db_contents == NULL){
+        printf("Failed to get db contents!\n");
+        return RC_FAILED;
+    }
+
+    json_object_object_get_ex(db_contents, "students", &students);
+    
+    for(int i=0; i < json_object_array_length(students); i++){
+        student = json_object_array_get_idx(students, i);
+        json_object_object_get_ex(student, "ID", &ID);
+        if(json_object_get_int(ID) == s.student_id){
+            printf("There is already a student in the database with ID %d\n", s.student_id);
+            return RC_FAILED;
+        }
+    }
+
+    // Add student to the database
+    if (add_student_to_db(s) != RC_SUCCESS){
         printf("Failed in adding provided student to the database\n");
         return RC_FAILED;
     }
