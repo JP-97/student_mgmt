@@ -44,7 +44,7 @@ int main(int argc, char *argv[])
                 break;
 
             case 'R':
-                printf("Not implemented yet\n");
+                ret = remove_student();
                 break;
 
             case 'Q':

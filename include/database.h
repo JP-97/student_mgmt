@@ -40,4 +40,12 @@ int init_student_database();
 */
 int get_student_info();
 
+/**
+ * Remove a student from the student database.
+ * 
+ * @return RC_SUCCESS if the student was successfully removed from the database
+ *         otherwise RC_FAILED.
+*/
+int remove_student();
+
 #endif
