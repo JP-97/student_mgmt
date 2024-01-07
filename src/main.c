@@ -1,15 +1,26 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <ctype.h>
 #include "database.h"
 #include "constants.h"
 #include "helpers.h"
 
 void print_help_message(void);
+static int initialize_db_path(void);
 
+char _db_path[50] = "/home/";
+const char *username = NULL, *DB_PATH = NULL;
 
 int main(int argc, char *argv[])
 {   
+    // Determine database location in filesystem
+    int got_path = initialize_db_path();
+    if (got_path != RC_SUCCESS){
+        printf("Something went wrong in determining the expected database path.\n");
+        exit(RC_FAILED);
+    }
+
     printf("\n\nWelcome to the student database tool!\n\n");
 
     // Main Loop
@@ -32,7 +43,7 @@ int main(int argc, char *argv[])
                 break;
 
             case 'M':
-                printf("Not implemented yet\n");
+                ret = modify_student();
                 break;
 
             case 'S':
@@ -82,4 +93,24 @@ void print_help_message(void)
     printf("Type 'V' to view an individual student in the database...\n");
     printf("Type 'R' to remove a student from the database...\n");
     printf("Type 'Q' to exit...\n\n");
+}
+
+
+/**
+ * Determine the path in which the student database will be created.
+*/
+static int initialize_db_path(void)
+{
+    username = getenv("USER");
+    if (username != NULL){
+        // Construct db.json absolute path based on $USER env variable
+        strcat(_db_path, username);
+        strcat(_db_path, "/db.json");
+    } else {
+        printf("Something went wrong finding username...\n");
+        return RC_FAILED;
+    }
+
+    DB_PATH = _db_path;
+    return RC_SUCCESS;
 }

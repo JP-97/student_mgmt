@@ -14,6 +14,13 @@
 int add_student();
 
 /**
+* Modify a student's attribute(s) in the database.
+*
+* @return RC_SUCCESS if student was succesfully modified, otherwise RC_FAILED.
+*/
+int modify_student();
+
+/**
 * Print the student database contents
 *
 * @return RC_SUCCESS if database was parsed and all student info was printed, 
